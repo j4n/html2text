@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """html2text: Turn HTML into equivalent Markdown-structured text."""
 __version__ = "3.200.3"
 __author__ = "Aaron Swartz (me@aaronsw.com)"
@@ -8,10 +8,28 @@ __contributors__ = ["Martin 'Joey' Schulze", "Ricardo Reyes", "Kevin Jay North"]
 # TODO:
 #   Support decoded entities with unifiable.
 
-import html.entities as htmlentitydefs
-import urllib.parse as urlparse
-import html.parser as HTMLParser
-import urllib.request as urllib
+try:
+    True
+except NameError:
+    setattr(__builtins__, 'True', 1)
+    setattr(__builtins__, 'False', 0)
+
+def has_key(x, y):
+    if hasattr(x, 'has_key'): return x.has_key(y)
+    else: return y in x
+
+try:
+    import htmlentitydefs
+    import urlparse
+    import HTMLParser
+except ImportError: #Python3
+    import html.entities as htmlentitydefs
+    import urllib.parse as urlparse
+    import html.parser as HTMLParser
+try: #Python3
+    import urllib.request as urllib
+except:
+    import urllib
 import optparse, re, sys, codecs, types
 
 try: from textwrap import wrap
@@ -42,9 +60,6 @@ GOOGLE_LIST_INDENT = 36
 IGNORE_ANCHORS = False
 IGNORE_IMAGES = False
 IGNORE_EMPHASIS = False
-
-def has_key(x, y):
-    return y in x
 
 ### Entity Nonsense ###
 
@@ -77,9 +92,9 @@ for k in unifiable.keys():
 def onlywhite(line):
     """Return true if the line does only consist of whitespace characters."""
     for c in line:
-        if c != ' ' and c != '\t':
-            return False
-    return True
+        if c is not ' ' and c is not '  ':
+            return c is ' '
+    return line
 
 def hn(tag):
     if tag[0] == 'h' and len(tag) == 2:
@@ -162,7 +177,7 @@ def list_numbering_start(attrs):
         return int(attrs['start']) - 1
     else:
         return 0
-        
+
 class HTML2Text(HTMLParser.HTMLParser):
     def __init__(self, out=None, baseurl=''):
         HTMLParser.HTMLParser.__init__(self)
@@ -182,7 +197,6 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.ul_item_mark = '*'
         self.emphasis_mark = '_'
         self.strong_mark = '**'
-        self.hide_strikethrough = False
 
         if out is None:
             self.out = self.outtextf
@@ -190,7 +204,11 @@ class HTML2Text(HTMLParser.HTMLParser):
             self.out = out
 
         self.outtextlist = []  # empty list to store output characters before they are "joined"
-        self.outtext = ""
+
+        try:
+            self.outtext = unicode()
+        except NameError:  # Python3
+            self.outtext = str()
 
         self.quiet = 0
         self.p_p = 0  # number of newline character to print before next output
@@ -245,12 +263,12 @@ class HTML2Text(HTMLParser.HTMLParser):
         self.pbr()
         self.o('', 0, 'end')
 
-        self.outtext = ''.join(self.outtextlist)
+        self.outtext = self.outtext.join(self.outtextlist)
         if self.unicode_snob:
-            nbsp = chr(name2cp('nbsp'))
+            nbsp = unichr(name2cp('nbsp'))
         else:
-            nbsp = ' '
-        self.outtext = self.outtext.replace('&nbsp_place_holder;', nbsp)
+            nbsp = u' '
+        self.outtext = self.outtext.replace(u'&nbsp_place_holder;', nbsp)
 
         return self.outtext
 
@@ -357,6 +375,7 @@ class HTML2Text(HTMLParser.HTMLParser):
                 self.quiet -= 1
 
     def handle_tag(self, tag, attrs, start):
+        #attrs = fixattrs(attrs)
         if attrs is None:
             attrs = {}
         else:
@@ -552,10 +571,6 @@ class HTML2Text(HTMLParser.HTMLParser):
     def soft_br(self):
         self.pbr()
         self.br_toggle = '  '
-        
-    def out(self, s):
-        """Appends the string to the output list"""
-        self.outtextlist.append(s)
 
     def o(self, data, puredata=0, force=0):
         if self.abbr_data is not None:
@@ -589,7 +604,7 @@ class HTML2Text(HTMLParser.HTMLParser):
                 if not self.list:
                     bq += "    "
                 #else: list content is already partially indented
-                for i in range(len(self.list)):
+                for i in xrange(len(self.list)):
                     bq += "    "
                 data = data.replace("\n", "\n"+bq)
 
@@ -672,7 +687,10 @@ class HTML2Text(HTMLParser.HTMLParser):
         if not self.unicode_snob and c in unifiable_n.keys():
             return unifiable_n[c]
         else:
-            return chr(c)
+            try:
+                return unichr(c)
+            except NameError: #Python3
+                return chr(c)
 
     def entityref(self, c):
         if not self.unicode_snob and c in unifiable.keys():
@@ -681,7 +699,10 @@ class HTML2Text(HTMLParser.HTMLParser):
             try: name2cp(c)
             except KeyError: return "&" + c + ';'
             else:
-                return chr(name2cp(c))
+                try:
+                    return unichr(name2cp(c))
+                except NameError: #Python3
+                    return chr(name2cp(c))
 
     def replaceEntities(self, s):
         s = s.group(1)
@@ -697,8 +718,9 @@ class HTML2Text(HTMLParser.HTMLParser):
         """calculate the nesting count of google doc lists"""
         nest_count = 0
         if 'margin-left' in style:
-            nest_count = int(style['margin-left'][:-2]) // self.google_list_indent
+            nest_count = int(style['margin-left'][:-2]) / self.google_list_indent
         return nest_count
+
 
     def optwrap(self, text):
         """Wrap all paragraphs in the provided text."""
@@ -779,8 +801,7 @@ def skipwrap(para):
     return False
 
 def wrapwrite(text):
-    if isinstance(text, str):
-        text = text.encode('utf-8')
+    text = text.encode('utf-8')
     try: #Python3
         sys.stdout.buffer.write(text)
     except AttributeError:
@@ -809,12 +830,12 @@ def escape_md_section(text, snob=False):
     text = md_dash_matcher.sub(r"\1\\\2", text)
     return text
 
+
 def main():
     baseurl = ''
 
-    p = optparse.OptionParser('%prog [(filename|url) [encoding]]')
-    p.add_option("--version", action="store_true", dest="version",
-        default=False, help="print version and exit")
+    p = optparse.OptionParser('%prog [(filename|url) [encoding]]',
+                              version='%prog ' + __version__)
     p.add_option("--ignore-emphasis", dest="ignore_emphasis", action="store_true",
         default=IGNORE_EMPHASIS, help="don't include any formatting for emphasis")
     p.add_option("--ignore-links", dest="ignore_links", action="store_true",
@@ -837,10 +858,6 @@ def main():
         default=False, help="Escape all special characters.  Output is less readable, but avoids corner case formatting issues.")
     (options, args) = p.parse_args()
 
-    if options.version:
-        print(__version__)
-        sys.exit(0)
-
     # process input
     encoding = "utf-8"
     if len(args) > 0:
@@ -852,7 +869,7 @@ def main():
 
         if file_.startswith('http://') or file_.startswith('https://'):
             baseurl = file_
-            j = urllib.request.urlopen(baseurl)
+            j = urllib.urlopen(baseurl)
             data = j.read()
             if encoding is None:
                 try:
@@ -871,7 +888,7 @@ def main():
                     detect = lambda x: {'encoding': 'utf-8'}
                 encoding = detect(data)['encoding']
     else:
-        data = sys.stdin.buffer.read()
+        data = sys.stdin.read()
 
     data = data.decode(encoding)
     h = HTML2Text(baseurl=baseurl)
